@@ -1,0 +1,31 @@
+James
+
+Algebra IT LLC
+
+E: james@algebrait.com
+
+---------- Forwarded message ----------
+From: Naveen Gangupamu <naveen.gangupamu@pamten.com>
+Sent: Friday, September 4, 2026
+To: James AlgebraIT <james@algebrait.com>
+
+Role: Senior Data Engineer (Databricks)
+
+Location: Irvine, CA or Los Angeles, CA (Hybrid) (Local Preferred)
+
+Responsibilities:
+- Design, build, and enhance platform capabilities within Databricks.
+- Build reusable data products.
+- Design and maintain data pipelines.
+- Improve data quality, reliability, lineage, and monitoring.
+
+Skills:
+- Databricks
+- Python
+- SQL
+- Terraform
+- Data Governance
+- Unity Catalog
+- Airflow
+- CI/CD
+- AI agents

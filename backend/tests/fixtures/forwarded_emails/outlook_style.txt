@@ -1,0 +1,28 @@
+Hi,
+
+Please see the role below, let me know if interested.
+
+Thanks,
+James
+
+From: Naveen Gangupamu <naveen.gangupamu@pamten.com>
+Sent: Friday, September 4, 2026 10:02 AM
+To: James AlgebraIT <james@algebrait.com>
+Subject: Role: Senior Data Engineer (Databricks)
+
+Role: Senior Data Engineer (Databricks)
+Location: Irvine, CA or Los Angeles, CA (Hybrid) (Local Preferred)
+
+Responsibilities:
+- Design, build, and enhance platform capabilities within Databricks.
+- Build reusable data products.
+
+Required Skills:
+- Databricks
+- Python
+- SQL
+- Terraform
+- Data Governance
+- Unity Catalog
+- Airflow
+- CI/CD

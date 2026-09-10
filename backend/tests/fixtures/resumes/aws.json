@@ -1,0 +1,12 @@
+{
+  "filename": "aws_resume.pdf",
+  "years_of_experience": 7,
+  "job_titles": ["Cloud Data Engineer", "AWS Data Engineer"],
+  "skills": {
+    "cloud_platforms": ["aws"],
+    "data_engineering_tools": ["glue", "step functions", "kafka", "hadoop"],
+    "databases": ["dynamodb", "redshift", "postgres"],
+    "languages": ["python", "sql", "java"],
+    "devops_tools": ["terraform", "kubernetes", "docker", "ci/cd"]
+  }
+}

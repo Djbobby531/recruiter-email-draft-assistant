@@ -1,0 +1,11 @@
+{
+  "filename": "python_resume.pdf",
+  "years_of_experience": 3,
+  "job_titles": ["Python Developer", "Backend Developer"],
+  "skills": {
+    "languages": ["python"],
+    "frameworks": ["django", "flask", "fastapi"],
+    "databases": ["postgres", "mysql"],
+    "devops_tools": ["docker"]
+  }
+}

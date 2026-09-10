@@ -1,0 +1,14 @@
+Role: Python QA Automation Engineer
+Location: Remote
+
+We need someone who lives and breathes Python. Python, Python, Python -
+you'll write Python test scripts all day using Python.
+
+Responsibilities:
+- Write and maintain Selenium-based UI test automation suites.
+- Own manual and automated QA sign-off for releases.
+
+Required Skills:
+- Python
+- Selenium
+- QA Automation

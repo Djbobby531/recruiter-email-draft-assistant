@@ -1,0 +1,15 @@
+Hey, saw this and thought of you.
+
+Begin forwarded message:
+
+From: Priya Sharma <priya.sharma@staffingco.com>
+Subject: Job Description: Senior Data Engineer (Databricks)
+Date: September 3, 2026 at 4:12:09 PM PDT
+To: Mike Recruiter <mike@thirdpartyfirm.com>
+
+Job Description
+
+Role: Senior Data Engineer (Databricks)
+Location: Irvine, CA or Los Angeles, CA (Hybrid)
+
+Required Skills: Databricks, Python, SQL, Airflow, Terraform, Unity Catalog

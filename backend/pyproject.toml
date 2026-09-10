@@ -1,0 +1,31 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # line length is handled loosely for readability of prose-like strings
+    "B008",  # FastAPI's Depends()-in-default-argument is the standard, intended idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = false
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+exclude = ["tests/", "\\.venv/"]
+
+[[tool.mypy.overrides]]
+module = "app.routers.*"
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_default_fixture_loop_scope = "function"

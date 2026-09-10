@@ -1,0 +1,13 @@
+{
+  "filename": "azure_resume.pdf",
+  "years_of_experience": 6,
+  "job_titles": ["Azure Data Engineer"],
+  "skills": {
+    "cloud_platforms": ["azure"],
+    "data_engineering_tools": ["databricks", "airflow"],
+    "databases": ["cosmos db", "sql server"],
+    "languages": ["python", "sql", "c#"],
+    "devops_tools": ["ci/cd", "ansible"],
+    "governance_cert": ["azure certified"]
+  }
+}

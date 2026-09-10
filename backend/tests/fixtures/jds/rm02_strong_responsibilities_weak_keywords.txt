@@ -1,0 +1,12 @@
+Role: Data Platform Engineer
+Location: Remote
+
+Responsibilities:
+- Own the design and delivery of large-scale data pipelines end to end.
+- Partner with analytics and product teams to define reliable data products.
+- Improve pipeline reliability, monitoring, and lineage across the platform.
+- Mentor junior engineers on platform best practices.
+
+Required Skills:
+- Python
+- SQL

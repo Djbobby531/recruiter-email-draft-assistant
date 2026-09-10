@@ -1,0 +1,11 @@
+{
+  "filename": "healthcare_resume.pdf",
+  "years_of_experience": 5,
+  "job_titles": ["Healthcare Data Analyst", "Business Analyst"],
+  "skills": {
+    "domains": ["healthcare", "life sciences"],
+    "databases": ["sql server", "postgres"],
+    "languages": ["sql", "python"],
+    "governance_cert": ["hipaa"]
+  }
+}

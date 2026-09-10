@@ -1,0 +1,21 @@
+James
+
+Algebra IT LLC
+
+E: james@algebrait.com
+
+---------- Forwarded message ---------
+From: Recruiter <recruiter@example.com>
+Date: Mon, Sep 1, 2026 at 9:14 AM
+Subject: Senior Data Engineer (Databricks)
+To: James AlgebraIT <james@algebrait.com>
+
+Role: Senior Data Engineer (Databricks)
+Location: Irvine, CA or Los Angeles, CA (Hybrid) (Local Preferred)
+
+Required Skills:
+- Databricks
+- Python
+- SQL
+- Airflow
+- Terraform

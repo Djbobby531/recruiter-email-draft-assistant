@@ -1,0 +1,10 @@
+Role: Quantitative Data Engineer
+Location: Remote
+
+Required Skills:
+- Finance
+- Banking
+- Kafka
+- Spark
+- SQL
+- SOX

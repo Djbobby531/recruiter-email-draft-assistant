@@ -1,0 +1,7 @@
+Role: Cloud Data Engineer
+Location: Remote
+
+Required Skills:
+- Python
+- SQL
+- Kafka

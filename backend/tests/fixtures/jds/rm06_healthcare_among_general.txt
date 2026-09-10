@@ -1,0 +1,8 @@
+Role: Healthcare Data Analyst
+Location: Remote
+
+Required Skills:
+- Healthcare
+- Life Sciences
+- SQL
+- HIPAA

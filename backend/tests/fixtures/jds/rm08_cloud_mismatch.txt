@@ -1,0 +1,7 @@
+Role: GCP Data Engineer
+Location: Remote
+
+Required Skills:
+- Google Cloud
+- BigQuery
+- Dataflow

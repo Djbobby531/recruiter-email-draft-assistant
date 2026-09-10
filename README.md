@@ -1,0 +1,371 @@
+# Recruiter Email Draft Assistant
+
+A local-first app that watches your Gmail inbox, figures out which emails are genuine
+recruiter/job outreach, identifies the *actual* recruiter (even when buried in a forwarded
+message), matches the job against your resume library, and creates a **Gmail draft** — never
+sends — with the best-matching resume attached.
+
+Runs entirely on your own machine, with your own Gmail OAuth credentials. No paid
+infrastructure required. AI (OpenAI or a local Ollama model) is optional and only ever used for
+fallback classification — the core pipeline is fully deterministic and works with zero API keys.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [What it deliberately does *not* do](#what-it-deliberately-does-not-do)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+  1. [Clone and configure](#1-clone-and-configure)
+  2. [Google Cloud project (Gmail API + OAuth)](#2-google-cloud-project-gmail-api--oauth)
+  3. [Install dependencies](#3-install-dependencies)
+  4. [Run it](#4-run-it)
+  5. [Connect Gmail](#5-connect-gmail)
+  6. [Candidate profile & resumes](#6-candidate-profile--resumes)
+- [Configuration reference](#configuration-reference)
+- [Running the test suite](#running-the-test-suite)
+- [Project structure](#project-structure)
+- [Troubleshooting](#troubleshooting)
+- [Security notes](#security-notes)
+- [Known limitations](#known-limitations)
+
+---
+
+## What it does
+
+- **Watches Gmail** via an incremental background sync (no extra infrastructure — just a
+  polling loop) and processes each new message once, exactly once.
+- **Classifies job emails** deterministically (keyword/structure-based), with an optional AI
+  fallback for ambiguous cases.
+- **Finds the real recruiter**, even inside a forwarded chain — the visible sender is often a
+  staffing-agency relay, not the person actually hiring, and the app tells the two apart.
+- **Screens for in-person interview requirements** before doing any other work — a job that
+  explicitly requires in-person/face-to-face/F2F attendance is flagged for manual review instead
+  of auto-drafted; plain "onsite" wording alone is not treated as a hard requirement.
+- **Matches your resume library** against the job description with a weighted, explainable
+  scoring model (skills, title, years of experience), preferring a resume titled for the
+  specific cloud platform (AWS/Azure/GCP) the JD asks for, and falling back to a generic
+  "Data Engineer" resume when nothing else fits.
+- **Customizes the attached resume** (`.docx` only) by truthfully surfacing skills you already
+  have but didn't write prominently into your summary — never inventing anything, and never
+  touching your original file.
+- **Creates a Gmail draft**, never sends it. You always review and hit send yourself.
+- **Tracks the full lifecycle** — Draft → Sent → Submitted → Interview/Rejected/Withdrawn — with
+  an audit trail, a searchable/filterable applications dashboard, and a recruiter CRM (contact
+  history, phone, company, every role they've sent you).
+
+## What it deliberately does *not* do
+
+- **Never sends email.** It only ever creates a Gmail draft — the OAuth scope requested doesn't
+  even include `gmail.send`, so it's structurally incapable of sending mail.
+- **Never puts your current location in a generated email.** There isn't even a field for it.
+- **Never re-processes the same message twice**, and never drafts a second reply into a thread
+  it already applied in.
+- **Never picks the incoming sender as the recruiter contact** when a better candidate email
+  exists elsewhere in the message (e.g. inside a forwarded block) — only falls back to the
+  sender when there's truly no other address anywhere in the email.
+
+---
+
+## Architecture
+
+```
+backend/   FastAPI + SQLAlchemy + SQLite (Python)
+frontend/  React + Vite dashboard
+data/      Local SQLite DB + uploaded resumes (gitignored — never committed)
+```
+
+- **Database**: SQLite, a single file, zero setup.
+- **Background sync**: an in-process asyncio polling loop (no Celery/Redis) that incrementally
+  syncs Gmail via the History API, backed by an explicit time watermark so no message is ever
+  silently skipped even if a sync cycle fails partway through.
+- **AI**: a pluggable `AIProvider` interface (`none` / `openai` / `ollama`). Every high-stakes
+  decision — reply detection, recruiter selection, resume matching/customization, duplicate
+  prevention — is deterministic; AI is only ever consulted as a fallback for ambiguous job
+  classification, JD extraction, and interview-arrangement screening.
+- **Recruiter CRM**: every confidently-identified recruiter is stored and kept up to date,
+  keyed on normalized email, with their role history and a full opportunity ledger.
+
+---
+
+## Prerequisites
+
+- **Python 3.11 or 3.12** (Python 3.14 currently breaks `pydantic-core`'s prebuilt wheels — if
+  `pip install` fails with a Rust/maturin build error, install 3.12: `brew install python@3.12`
+  on macOS, then create the venv with `python3.12`).
+- **Node.js 18+** (for the frontend).
+- A Google account — the Gmail inbox you want monitored.
+- *(Optional)* An OpenAI API key, or a locally running [Ollama](https://ollama.ai) instance.
+
+---
+
+## Setup
+
+### 1. Clone and configure
+
+```bash
+git clone https://github.com/<your-username>/recruiter-email-draft-assistant.git
+cd recruiter-email-draft-assistant
+cp .env.example .env
+```
+
+You'll fill in `.env` with real values in the next step.
+
+### 2. Google Cloud project (Gmail API + OAuth)
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and create a new project
+   (or reuse one).
+2. **Enable the Gmail API**: *APIs & Services → Library* → search "Gmail API" → **Enable**.
+3. **Configure the OAuth consent screen**: *APIs & Services → OAuth consent screen*.
+   - User type: **External** (or Internal if you're on Google Workspace).
+   - Add your own Gmail address as a **Test user** (required while the app is in "Testing" mode).
+4. **Create OAuth credentials**: *APIs & Services → Credentials → Create Credentials → OAuth
+   client ID*.
+   - Application type: **Web application**.
+   - Authorized redirect URI: `http://localhost:8000/api/gmail/oauth/callback`
+   - Copy the generated **Client ID** and **Client Secret**.
+5. Paste those into `.env` as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, and set `MY_EMAIL` to
+   your own mailbox address.
+
+The app requests only two scopes: `gmail.readonly` (to read and parse incoming mail) and
+`gmail.compose` (to create drafts and attach files) — never `gmail.send`.
+
+### 3. Install dependencies
+
+```bash
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+cd ../frontend
+npm install
+```
+
+### 4. Run it
+
+**Terminal 1 — backend:**
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+```
+
+**Terminal 2 — frontend:**
+```bash
+cd frontend
+npm run dev
+```
+
+Open **http://localhost:5173**.
+
+### 5. Connect Gmail
+
+1. Go to the **Gmail Connection** page and click **Connect Gmail**.
+2. Sign in with the Google account you want monitored and grant the requested permissions.
+3. You'll be redirected back showing "Connected."
+
+The background sync then checks for new mail every `POLL_INTERVAL_SECONDS`. The very first sync
+only seeds a starting point — it does **not** backfill your entire inbox — only messages that
+arrive *after* connecting get processed.
+
+### 6. Candidate profile & resumes
+
+- **Candidate Profile** page: fill in name, years of experience, work authorization, phone,
+  email, and LinkedIn — these populate every generated email. There's intentionally no "current
+  location" field.
+- **Resume Library** page: upload a few resumes (**PDF, DOCX, or DOC** all supported). Each is
+  parsed and indexed once at upload time; if you upload multiple cloud-focused resumes (e.g.
+  `AWS_Data_Engineer.docx`, `Azure_Data_Engineer.docx`) alongside a plain `Data_Engineer.docx`,
+  the matcher will prefer the cloud-specific one when a JD calls for that platform, and fall
+  back to the plain one otherwise. Save as `.docx` or `.pdf` for the most reliable parsing —
+  legacy `.doc` uses a best-effort text extraction fallback.
+
+---
+
+## Configuration reference
+
+| Variable | Purpose |
+|---|---|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth credentials from the Google Cloud setup above |
+| `GOOGLE_REDIRECT_URI` | Must exactly match the redirect URI registered in Google Cloud |
+| `MY_EMAIL` | Your own mailbox address — excluded from recruiter-candidate detection |
+| `EMAIL_MODE` | `polling` (default, zero extra infra) or `pubsub` (advanced, not implemented) |
+| `POLL_INTERVAL_SECONDS` | How often to check Gmail for new mail (default 60s) |
+| `AI_PROVIDER` | `none` (fully deterministic), `openai`, or `ollama` |
+| `OPENAI_API_KEY` / `OPENAI_MODEL` | Only needed if `AI_PROVIDER=openai` |
+| `OLLAMA_BASE_URL` / `OLLAMA_MODEL` | Only needed if `AI_PROVIDER=ollama` (e.g. `ollama run llama3.1`) |
+| `JOB_CLASSIFICATION_THRESHOLD` | Confidence floor (0-1) for deterministic job-email classification |
+| `RECRUITER_EMAIL_CONFIDENCE_THRESHOLD` | Confidence floor (0-1) for recruiter-candidate selection |
+
+`AI_PROVIDER=none` is a fully functional mode — job classification, JD extraction, recruiter
+identification, interview screening, and resume matching all work from deterministic rules with
+no API key at all.
+
+---
+
+## Running the test suite
+
+**Backend** (700 tests — pytest, FastAPI TestClient, fully mocked Gmail API and AI providers, no
+real credentials needed):
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m pytest -v                                    # run everything
+python -m pytest --cov=app --cov-report=term-missing    # with coverage
+ruff check .                                             # lint
+mypy app                                                  # type check
+```
+
+**Frontend** (32 tests — Vitest + React Testing Library):
+
+```bash
+cd frontend
+npm test        # run once
+npm run lint     # eslint
+```
+
+**CI**: `.github/workflows/ci.yml` runs lint + type-check + tests + coverage for the backend and
+lint + tests + build for the frontend on every push/PR — no real credentials required.
+
+---
+
+## Project structure
+
+```
+backend/
+  app/
+    config.py                    # Settings, env loading
+    database.py                  # SQLAlchemy engine/session + lightweight migrations
+    models.py                    # ORM models
+    schemas.py                   # Pydantic API schemas
+    main.py                      # FastAPI app + router registration
+    routers/                     # HTTP endpoints per resource
+    services/
+      email_parser.py            # headers/plain/html/forwarded parsing
+      reply_detector.py          # skip replies to threads already applied in
+      job_classifier.py          # deterministic + AI-assisted job-email classification
+      jd_extractor.py            # job title/location/requirements extraction
+      recruiter_selector.py      # who's the actual recruiter (To vs. CC)
+      recruiter_info_extractor.py # recruiter name/phone/company/role from signatures
+      recruiter_service.py       # Recruiter/RecruiterRole persistence (dedup by email)
+      interview_classifier.py    # IN_PERSON/ONSITE/REMOTE/HYBRID screening
+      resume_service.py          # upload/parse/index resumes
+      resume_matcher.py          # weighted JD/resume scoring + cloud-platform preference
+      resume_customizer.py       # deterministic, truthful, format-preserving customization
+      draft_service.py           # subject/body generation
+      gmail_service.py           # OAuth + Gmail API + draft creation
+      application_events.py      # audit-trail writer
+      application_status.py      # Draft/Sent/Submitted/... lifecycle graph
+      sent_detection.py          # Gmail sent-message detection (Draft -> Sent only)
+      pipeline.py                # orchestrates the full flow
+      poller.py                  # background incremental sync + sent-detection cycle
+    ai/
+      base.py                    # AIProvider interface
+      openai_provider.py
+      ollama_provider.py
+      factory.py
+  tests/                         # pytest suite
+frontend/
+  src/pages/                     # Dashboard, Gmail, Profile, Resumes, Messages, Applications,
+                                  # Recruiters, Skipped Opportunities, Settings
+data/
+  db/app.db                      # SQLite (gitignored)
+  resumes/                       # uploaded resumes - PDF/DOCX/DOC (gitignored)
+```
+
+### Database schema (SQLite)
+
+- `gmail_accounts` — connected account, OAuth token, last-synced history ID + time watermark
+- `candidate_profile` — name, experience, work authorization, phone, email, LinkedIn
+- `resumes` — filename, file path, extracted text/metadata, indexing status
+- `processed_messages` — one row per Gmail message ever seen, with its outcome status
+- `applications` — recruiter + job details, match score/explanation, generated subject/body,
+  interview-screening result, and the full tracker lifecycle (status, sent/submitted/interview
+  timestamps, `customized_resume_path`)
+- `application_events` — the audit trail: one row per lifecycle event, powering the Timeline
+- `drafts` — Gmail draft ID, to/cc, subject, attached resume filename
+- `recruiters` — normalized email (unique key), name, company, role, phone, notes, and running
+  opportunity/draft/skip counts
+- `recruiter_roles` — one row per distinct job title a recruiter has sent, with a running count
+- `opportunities` — one row per job email reaching a confidently-identified recruiter,
+  independent of `applications` — job/company/skills, interview classification + evidence,
+  status, and the manual-override audit trail
+
+A lightweight auto-migration (`app/database.py::_run_lightweight_migrations`) adds new columns
+to an existing local database on next startup — no Alembic is used in this project.
+
+---
+
+## Troubleshooting
+
+**`pip install` fails building `pydantic-core` (Rust/maturin error)**
+You're likely on Python 3.14, which is too new for the pinned wheel builds. Install Python 3.12
+and recreate the venv with it.
+
+**"GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not configured"**
+Fill those into `.env` and restart the backend.
+
+**OAuth redirect fails / "redirect_uri_mismatch"**
+The redirect URI in your Google Cloud OAuth client must exactly match `GOOGLE_REDIRECT_URI` in
+`.env` (default `http://localhost:8000/api/gmail/oauth/callback`).
+
+**Nothing shows up in Processed Emails after connecting**
+The first sync only seeds a starting point — it doesn't backfill old mail. Send yourself a test
+email after connecting, and wait up to `POLL_INTERVAL_SECONDS`.
+
+**A job email was skipped as "not a job"**
+Classification is deterministic-first by keyword density. For a short test snippet, add more
+realistic JD language (title, responsibilities, required skills), or set
+`AI_PROVIDER=ollama`/`openai` to enable AI classification for ambiguous cases.
+
+**Draft wasn't attached / attachment missing**
+Confirm the selected resume's indexing status is `INDEXED` on the Resume Library page — an
+unindexed or failed-to-parse resume is never attached; the message routes to manual review
+instead.
+
+**A job was skipped for "in-person interview" but I wanted it processed**
+Go to **Skipped Opportunities**, open the item, check the "Evidence" excerpt, then click
+**Override and Process** — this runs resume matching, email generation, and Gmail draft creation
+for that opportunity.
+
+**An application stays "Awaiting send confirmation" after I sent it from Gmail**
+Sent-message detection matches on the draft's recipient and subject within its own thread — if
+you edited the subject line before sending, automatic detection won't fire. Click **Check for
+Sent Emails** on the Applications page, or wait for the next poll cycle if you sent it unmodified.
+
+---
+
+## Security notes
+
+- OAuth tokens are stored only in the local SQLite DB — never sent to the frontend.
+- `.env` is gitignored; only `.env.example` (placeholders) is committed.
+- Full email bodies are never logged unless `DEBUG_LOG_EMAIL_CONTENT=true` is explicitly set.
+- The Gmail OAuth scope set excludes `gmail.send` entirely — this app cannot send email even if
+  compromised, only create drafts.
+- Your resumes, database, and any real recruiter/candidate data live only in the gitignored
+  `data/` directory and are never pushed to version control.
+
+---
+
+## Known limitations
+
+- **Resume matching is deterministic/taxonomy-based, not embedding/semantic search** — very
+  unusual JD phrasing outside the built-in skills taxonomy may under-match until AI is enabled.
+- **A low resume match score, or low/absent recruiter-identification confidence, no longer
+  blocks draft creation** — by design, the pipeline always produces a draft using the best
+  candidate/resume it can find, recording the score/confidence for you to review afterward
+  rather than pausing for manual input. It only ever routes to Manual Review when there are
+  genuinely zero resumes uploaded, or the Candidate Profile is empty.
+- **Recruiter record linking is manual and display-only** — linking two recruiter records as
+  "the same person" never merges their stats/history; it's purely an annotation.
+- **Gmail sent-message detection matches on recipient + subject within the draft's own thread**
+  — editing the subject line in Gmail before sending will prevent automatic detection; you can
+  transition the status manually instead.
+- **Pub/Sub mode (`EMAIL_MODE=pubsub`) is documented but not implemented** — `polling` is the
+  supported and default mode; Pub/Sub would require a public HTTPS endpoint and a paid-tier GCP
+  project, out of scope for this local, single-user app.
+- **Resume customization only produces a customized file for `.docx` resumes** — PDF and legacy
+  `.doc` resumes are attached unchanged, since there's no safe way to insert text into either
+  format without risking a corrupted layout.

@@ -1,0 +1,10 @@
+{
+  "from_header": "James AlgebraIT <james@algebrait.com>",
+  "subject": "Fw: Hiring for || Role: Senior Data Engineer (Databricks) Location: Irvine, CA or Los Angeles, CA (Hybrid) (Local Preferred) ||",
+  "body_file": "exact_spec_example_body.txt",
+  "expected": {
+    "to_email": "naveen.gangupamu@pamten.com",
+    "cc_email": "james@algebrait.com",
+    "subject": "Application for Senior Data Engineer (Databricks) - Irvine, CA"
+  }
+}

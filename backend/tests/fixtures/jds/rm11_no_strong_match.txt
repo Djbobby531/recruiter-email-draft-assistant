@@ -1,0 +1,9 @@
+Role: Embedded Firmware Engineer
+Location: Remote
+
+Required Skills:
+- C
+- Embedded Systems
+- RTOS
+- Firmware
+- Assembly

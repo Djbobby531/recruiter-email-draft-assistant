@@ -1,0 +1,27 @@
+Hi team, forwarding again in case anyone is interested.
+
+Best,
+Mike
+
+---------- Forwarded message ---------
+From: Mike Recruiter <mike@thirdpartyfirm.com>
+Date: Thu, Sep 3, 2026 at 5:00 PM
+Subject: Fwd: Job Description: Senior Data Engineer (Databricks)
+To: internal-list@thirdpartyfirm.com
+
+FYI, forwarding the original JD below.
+
+---------- Forwarded message ---------
+From: Priya Sharma <priya.sharma@staffingco.com>
+Date: Thu, Sep 3, 2026 at 4:12 PM
+Subject: Job Description: Senior Data Engineer (Databricks)
+To: Mike Recruiter <mike@thirdpartyfirm.com>
+
+Role: Senior Data Engineer (Databricks)
+Location: Irvine, CA or Los Angeles, CA (Hybrid)
+
+Required Skills: Databricks, Python, SQL, Airflow, Terraform, Unity Catalog
+
+Priya Sharma
+Staffing Co
+priya.sharma@staffingco.com

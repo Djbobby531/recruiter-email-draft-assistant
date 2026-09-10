@@ -1,0 +1,31 @@
+# Secrets / env
+.env
+*.local
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+.venv/
+venv/
+*.egg-info/
+
+# Data (local-first storage - never commit resumes, DB, or OAuth tokens)
+data/db/*.db
+data/db/*.json
+data/resumes/*
+!data/resumes/.gitkeep
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

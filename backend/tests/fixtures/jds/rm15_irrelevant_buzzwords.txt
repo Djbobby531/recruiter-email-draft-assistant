@@ -1,0 +1,15 @@
+Role: Senior Data Engineer (Databricks) - Rockstar Ninja Wanted!
+Location: Remote
+
+We're looking for a 10x rockstar ninja guru who can wear many hats in our
+fast-paced, dynamic, synergistic environment and hit the ground running in
+a fun, family-like culture.
+
+Required Skills:
+- Databricks
+- Python
+- SQL
+- Airflow
+- Growth mindset
+- Team player
+- Self-starter

@@ -1,0 +1,12 @@
+{
+  "filename": "finance_quant_resume.pdf",
+  "years_of_experience": 9,
+  "job_titles": ["Quantitative Data Engineer", "Financial Data Analyst"],
+  "skills": {
+    "domains": ["finance", "banking"],
+    "data_engineering_tools": ["kafka", "spark"],
+    "databases": ["oracle", "sql server"],
+    "languages": ["python", "sql", "r"],
+    "governance_cert": ["sox"]
+  }
+}

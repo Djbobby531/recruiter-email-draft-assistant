@@ -1,0 +1,12 @@
+{
+  "filename": "databricks_resume.pdf",
+  "years_of_experience": 8,
+  "job_titles": ["Senior Data Engineer", "Data Platform Engineer"],
+  "skills": {
+    "cloud_platforms": ["azure", "aws"],
+    "data_engineering_tools": ["databricks", "airflow", "unity catalog", "delta lake", "spark"],
+    "languages": ["python", "sql", "scala"],
+    "devops_tools": ["terraform", "ci/cd", "docker"],
+    "governance_cert": ["data governance", "unity catalog", "databricks certified"]
+  }
+}

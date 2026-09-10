@@ -1,0 +1,12 @@
+{
+  "filename": "gcp_resume.pdf",
+  "years_of_experience": 6,
+  "job_titles": ["GCP Data Engineer"],
+  "skills": {
+    "cloud_platforms": ["gcp"],
+    "data_engineering_tools": ["bigquery", "dbt"],
+    "databases": ["postgres"],
+    "languages": ["python", "sql"],
+    "devops_tools": ["terraform", "ci/cd"]
+  }
+}

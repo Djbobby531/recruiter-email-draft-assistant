@@ -1,0 +1,13 @@
+Role: Senior Data Engineer (Databricks)
+Location: Remote
+
+Required Skills:
+- Databricks
+- Airflow
+- Unity Catalog
+- Delta Lake
+- Python
+- SQL
+- Terraform
+- CI/CD
+- Data Governance

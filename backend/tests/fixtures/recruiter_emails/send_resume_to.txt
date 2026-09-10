@@ -1,0 +1,11 @@
+Team,
+
+We have an urgent requirement for a Senior Data Engineer (Databricks) role,
+Remote - US.
+
+Required Skills: Databricks, Python, SQL, Spark, Airflow
+
+Send resume to: intake@vendorfirm.com
+
+Thanks,
+Vendor Staffing Desk

@@ -1,0 +1,8 @@
+Role: Healthcare Data Analyst
+Location: Remote
+
+Required Skills:
+- SQL
+- Python
+- Healthcare
+- HIPAA

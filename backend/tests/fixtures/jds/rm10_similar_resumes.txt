@@ -1,0 +1,8 @@
+Role: Data Engineer (Databricks)
+Location: Remote
+
+Required Skills:
+- Databricks
+- Python
+- SQL
+- Airflow
