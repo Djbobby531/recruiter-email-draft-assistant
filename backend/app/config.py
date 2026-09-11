@@ -74,6 +74,23 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.1"
 
+    # --- LLM-assisted resume customization (header role / summary / skills /
+    # experience bullets) - only ever engaged when AI_PROVIDER is openai or
+    # ollama; AI_PROVIDER=none always uses the deterministic fallback in
+    # app/services/resume_customizer.py regardless of this flag. ---
+    RESUME_LLM_CUSTOMIZATION_ENABLED: bool = True
+    RESUME_LLM_MAX_SUMMARY_POINTS: int = 2
+    RESUME_LLM_MAX_EXPERIENCE_POINTS: int = 2
+    RESUME_LLM_MAX_SKILLS: int = 6
+    # Deliberately much higher than the other AI calls' implicit ~60s budget:
+    # the resume-customization prompt (full resume + JD text + structure
+    # summary, requesting a long structured JSON plan back) measurably took
+    # >60s against a local CPU-bound Ollama model in production, causing
+    # every real customization attempt to time out and silently fall back to
+    # the plain deterministic customization - see app/ai/factory.py, which
+    # wires this into the provider's resume-specific timeout.
+    RESUME_LLM_TIMEOUT_SECONDS: float = 180.0
+
     # --- Classification thresholds ---
     # How much job-related keyword signal an email needs to be treated as a
     # job/recruiter email at all (see job_classifier.py). Lowered from a

@@ -257,6 +257,15 @@ class Application(Base):
     # is never modified. None when no customization was produced (e.g. the
     # resume isn't a .docx, or there was nothing truthful to add).
     customized_resume_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Which customization path actually produced customized_resume_path -
+    # "llm" (the Ollama/OpenAI-assisted path succeeded), "deterministic"
+    # (the LLM path was unavailable/disabled/failed, plain keyword-based
+    # customization was used instead), or None (neither produced a file;
+    # the original, unmodified resume was attached). Makes it possible to
+    # tell from the DB alone, for any application, which path actually ran -
+    # never has to be inferred from the attached filename's naming
+    # convention.
+    customization_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

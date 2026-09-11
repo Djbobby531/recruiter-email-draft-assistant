@@ -119,6 +119,112 @@ def test_ollama_polish_email_body_returns_text(monkeypatch):
     assert result == "Polished via Ollama."
 
 
+def test_ollama_resume_customization_plan_uses_resume_specific_timeout(monkeypatch):
+    """Regression: the resume-customization prompt (full resume + JD text,
+    asking for a large structured JSON plan back) is measurably heavier than
+    the short classification calls above and was silently reusing the same
+    short `timeout` for every call - on a real local Ollama model this
+    produced real ReadTimeouts that were swallowed and fell back to the
+    plain deterministic customization for every real email. The call must
+    use `resume_timeout`, independent from the general `timeout`."""
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["timeout"] = timeout
+        body = json_module_dumps({
+            "jd_role": "Data Engineer", "header_role": "Data Engineer",
+            "summary_points": [], "skills_to_add": [], "experience_updates": [],
+        })
+        return _FakeResponse({"response": body})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OllamaProvider(timeout=60.0, resume_timeout=180.0)
+    provider.generate_resume_customization_plan(
+        resume_text="", resume_structure={}, jd_title="Data Engineer", jd_text="",
+        jd_requirements=[], approved_skills=[], approved_experience_identifiers=[],
+    )
+    assert captured["timeout"] == 180.0
+
+    # a short classification call on the SAME provider instance still uses
+    # the short general timeout - only the resume-plan call is extended.
+    provider.classify_job_email(subject="x", body="y")
+    assert captured["timeout"] == 60.0
+
+
+def test_ollama_resume_timeout_defaults_to_general_timeout_when_not_given():
+    provider = OllamaProvider(timeout=45.0)
+    assert provider.resume_timeout == 45.0
+
+
+def test_openai_resume_customization_plan_uses_resume_specific_timeout(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers, json, timeout):
+        captured["timeout"] = timeout
+        content = json_module_dumps({
+            "jd_role": "Data Engineer", "header_role": "Data Engineer",
+            "summary_points": [], "skills_to_add": [], "experience_updates": [],
+        })
+        return _FakeResponse({"choices": [{"message": {"content": content}}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAIProvider(api_key="sk-test", timeout=30.0, resume_timeout=180.0)
+    provider.generate_resume_customization_plan(
+        resume_text="", resume_structure={}, jd_title="Data Engineer", jd_text="",
+        jd_requirements=[], approved_skills=[], approved_experience_identifiers=[],
+    )
+    assert captured["timeout"] == 180.0
+
+    provider.classify_job_email(subject="x", body="y")
+    assert captured["timeout"] == 30.0
+
+
+def test_factory_wires_resume_llm_timeout_into_ollama_provider():
+    settings = Settings(AI_PROVIDER="ollama", RESUME_LLM_TIMEOUT_SECONDS=180.0)
+    provider = get_ai_provider(settings)
+    assert isinstance(provider, OllamaProvider)
+    assert provider.resume_timeout == 180.0
+
+
+def test_factory_wires_resume_llm_timeout_into_openai_provider():
+    settings = Settings(AI_PROVIDER="openai", OPENAI_API_KEY="sk-test", RESUME_LLM_TIMEOUT_SECONDS=180.0)
+    provider = get_ai_provider(settings)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider.resume_timeout == 180.0
+
+
+# --- generate_email_skills_pitch ---
+
+
+def test_ollama_generate_email_skills_pitch_returns_text(monkeypatch):
+    def fake_post(url, json, timeout):
+        assert "/api/generate" in url
+        assert "databricks" in json["prompt"]
+        return _FakeResponse({"response": "My Databricks and Python background aligns well with this role."})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OllamaProvider()
+    result = provider.generate_email_skills_pitch(
+        job_title="Data Engineer", jd_text="Streaming role", top_skills=["databricks", "python"],
+        candidate_experience="8 years",
+    )
+    assert "Databricks" in result
+
+
+def test_openai_generate_email_skills_pitch_returns_text(monkeypatch):
+    def fake_post(url, headers, json, timeout):
+        assert "databricks" in json["messages"][1]["content"]
+        return _FakeResponse({"choices": [{"message": {"content": "My Databricks background fits well."}}]})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    provider = OpenAIProvider(api_key="sk-test")
+    result = provider.generate_email_skills_pitch(
+        job_title="Data Engineer", jd_text="Streaming role", top_skills=["databricks"],
+        candidate_experience="8 years",
+    )
+    assert "Databricks" in result
+
+
 # --- Factory ---
 
 def test_factory_returns_none_for_ai_provider_none():

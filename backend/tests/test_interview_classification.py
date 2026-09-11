@@ -247,7 +247,44 @@ def test_ai_in_person_claim_without_real_evidence_in_text_is_discarded():
     text = "Interview process includes multiple rounds."
     result = classify_interview_requirement(text, ai_provider=ai)
     assert result.interview_type == "UNKNOWN"  # deterministic fallback wins
+
+
+def test_ai_in_person_claim_backed_only_by_a_job_location_line_is_discarded():
+    """Real production bug: a JD with no interview info at all - just
+    "Location: Charlotte, NC - Onsite" - was classified IN_PERSON by the AI,
+    quoting that exact location line as "evidence". The line genuinely
+    appears in the text (so the old evidence-presence check alone let it
+    through), but it says nothing about the INTERVIEW - it's a job-location
+    statement. Must be discarded and fall back to UNKNOWN (never skip)."""
+    ai = _StubAI({
+        "interview_type": "IN_PERSON", "requires_in_person_interview": True, "confidence": 1.0,
+        "reason": "The job location is specified as 'Onsite' in Charlotte, NC.",
+        "evidence": "Location: Charlotte, NC – Onsite",
+    })
+    text = (
+        "Role: Axiom Data Engineer\n"
+        "Location: Charlotte, NC – Onsite\n\n"
+        "Must-Have Skills:\nAxiomSL / ControllerView\nSQL & PL/SQL\n"
+    )
+    result = classify_interview_requirement(text, ai_provider=ai)
+    assert result.interview_type == "UNKNOWN"
+    assert result.requires_in_person_interview is False
     assert result.source == "deterministic"
+
+
+def test_ai_in_person_claim_with_genuine_interview_evidence_is_still_accepted():
+    """Sanity check: the new guard doesn't reject legitimate AI evidence that
+    actually is about the interview - only evidence with no interview/round/
+    call context word at all. Uses phrasing the deterministic patterns don't
+    already cover on their own, so this genuinely exercises the AI path."""
+    ai = _StubAI({
+        "interview_type": "IN_PERSON", "requires_in_person_interview": True, "confidence": 0.9,
+        "reason": "The final call happens in person", "evidence": "this call happens in person at our downtown office",
+    })
+    text = "We will do a final call with you. Please note this call happens in person at our downtown office."
+    result = classify_interview_requirement(text, ai_provider=ai)
+    assert result.interview_type == "IN_PERSON"
+    assert result.source == "ai"
 
 
 def test_ai_internally_inconsistent_response_is_discarded():

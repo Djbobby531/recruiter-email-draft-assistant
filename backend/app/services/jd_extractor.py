@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, field
 
 from app.ai.base import AIProvider
+from app.utils.text_cleaning import clean_role_text
 
 TITLE_PATTERNS = [
     re.compile(r"(?:^|\n)\s*(?:Role|Job Title|Position|Title)\s*[:\-]\s*(?P<val>[^\n]{3,120})", re.IGNORECASE),
@@ -29,8 +30,21 @@ REQUIREMENTS_SECTION_PATTERNS = [
 
 # Subject line pattern used in the sample data:
 # "Fw: Hiring for || Role: Senior Data Engineer (Databricks) Location: Irvine, CA ... ||"
+#
+# The trailing terminator is a LOOKAHEAD for "||", end-of-line, or true
+# end-of-string - not a consuming `\s*$` - because `extract_job_details`
+# always searches this against `f"{subject}\n{full_body_text}"`, not the
+# subject alone. A bare `$` (no MULTILINE) only matches the true end of the
+# WHOLE combined string, so a single-line subject like "Role: X Location:
+# Y" - with a real email body following it - would never satisfy `$` right
+# after "Y", silently failing to match at all and falling through to the
+# much cruder TITLE_PATTERNS below, which has no notion of where an
+# embedded "Location:" clause starts and would swallow it into the title
+# (e.g. "Senior Data Engineer Location: Remote"). Matching up to end-of-LINE
+# fixes that without needing re.MULTILINE (which would also change `^`
+# elsewhere in this module).
 SUBJECT_ROLE_LOCATION_RE = re.compile(
-    r"Role\s*:\s*(?P<title>.+?)\s*Location\s*:\s*(?P<location>.+?)(?:\s*\|\||\s*$)",
+    r"Role\s*:\s*(?P<title>.+?)\s*Location\s*:\s*(?P<location>.+?)(?=\s*\|\||\n|$)",
     re.IGNORECASE,
 )
 
@@ -119,7 +133,10 @@ def _normalize_title(title: str | None) -> str | None:
     normalized = title
     for pattern, replacement in TITLE_ABBREVIATIONS:
         normalized = pattern.sub(replacement, normalized)
-    return _clean(normalized)
+    # Recruiter subject lines routinely carry decorative junk (emoji, a
+    # stray "#") that has no place in a job title once it's used verbatim
+    # in a resume header, filename, or email subject/body downstream.
+    return clean_role_text(_clean(normalized))
 
 
 def _extract_title(text: str) -> str | None:
@@ -337,7 +354,7 @@ def extract_job_details(text: str, subject: str, ai_provider: AIProvider | None 
     if ai_provider is not None:
         try:
             ai_result = ai_provider.extract_job_details(combined[:8000])
-            ai_title = ai_result.get("job_title") or title
+            ai_title = clean_role_text(ai_result.get("job_title")) or title
             ai_location = ai_result.get("job_location")
             # never trust an AI-invented location: it must appear verbatim in source text
             if ai_location and ai_location.lower() not in combined.lower():

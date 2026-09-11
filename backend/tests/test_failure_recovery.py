@@ -87,7 +87,13 @@ def test_ai_provider_unavailable_falls_back_to_deterministic_and_does_not_error(
         def classify_interview_requirement(self, text):
             raise ConnectionError("AI provider unreachable")
 
-        def evaluate_and_customize_resume(self, resume_text, jd_title, jd_text, candidate_existing_skills):
+        def generate_resume_customization_plan(
+            self, resume_text, resume_structure, jd_title, jd_text, jd_requirements,
+            approved_skills, approved_experience_identifiers,
+        ):
+            raise ConnectionError("AI provider unreachable")
+
+        def generate_email_skills_pitch(self, job_title, jd_text, top_skills, candidate_experience):
             raise ConnectionError("AI provider unreachable")
 
     _seed_resume(db_session)
@@ -111,7 +117,13 @@ def test_ai_returns_invalid_json_does_not_create_a_bad_draft(db_session, setting
         def classify_interview_requirement(self, text):
             raise ValueError("invalid JSON from model")
 
-        def evaluate_and_customize_resume(self, resume_text, jd_title, jd_text, candidate_existing_skills):
+        def generate_resume_customization_plan(
+            self, resume_text, resume_structure, jd_title, jd_text, jd_requirements,
+            approved_skills, approved_experience_identifiers,
+        ):
+            raise ValueError("invalid JSON from model")
+
+        def generate_email_skills_pitch(self, job_title, jd_text, top_skills, candidate_experience):
             raise ValueError("invalid JSON from model")
 
     _seed_resume(db_session)

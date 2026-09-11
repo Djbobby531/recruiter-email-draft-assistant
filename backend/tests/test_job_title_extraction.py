@@ -83,3 +83,38 @@ def test_title_with_recruiter_formatting_noise_is_cleaned():
 def test_no_title_present_returns_none_not_fabricated():
     jd = extract_job_details(text="Just checking in, no rush.", subject="Hey")
     assert jd.job_title is None
+
+
+def test_hash_symbol_stripped_from_title():
+    jd = extract_job_details(text="", subject="Role: Senior Data Engineer #1 Location: Remote")
+    assert "#" not in jd.job_title
+    assert jd.job_title == "Senior Data Engineer 1"
+
+
+def test_emoji_and_decorative_symbols_stripped_from_title():
+    """Real-world regression: a recruiter subject line like
+    'URGENT HIRING – Azure AI Engineer 🚨 📩 someone@example.com 🔴 DALLAS, TX'
+    must never leak emoji/symbol junk into the title used downstream for the
+    resume header, filename, and email subject/body."""
+    jd = extract_job_details(
+        text="", subject="Role: 🚨 Senior Data Engineer 🔴 Location: Remote",
+    )
+    assert jd.job_title == "Senior Data Engineer"
+
+
+class _AIWithSymbolLadenTitle:
+    def extract_job_details(self, text):
+        return {"job_title": "🚨 Senior #Data Engineer!", "job_location": None, "requirements": []}
+
+
+def test_ai_provided_title_is_also_cleaned_of_symbols():
+    """The AI-extraction fallback path bypasses the deterministic
+    `_normalize_title` cleaning entirely - it must still be cleaned before
+    being trusted, since AI-extracted titles are exactly as likely to carry
+    forward decorative junk from a messy subject line."""
+    jd = extract_job_details(
+        text="No structured Role:/Location: labels here at all.",
+        subject="check this out",
+        ai_provider=_AIWithSymbolLadenTitle(),
+    )
+    assert jd.job_title == "Senior Data Engineer"

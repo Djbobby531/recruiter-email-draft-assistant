@@ -124,6 +124,14 @@ REMOTE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 _MENTIONS_INTERVIEW_RE = re.compile(r"\binterview", re.IGNORECASE)
 
+# An AI-claimed IN_PERSON evidence excerpt must itself be ABOUT the interview -
+# never just a job-location/work-arrangement line like "Location: Charlotte,
+# NC - Onsite" (real bug: that phrase genuinely appears in the source text,
+# so the plain "evidence appears in the text" check alone let it through even
+# though it says nothing about the interview at all). Same anchor words the
+# deterministic patterns above already require.
+_INTERVIEW_CONTEXT_WORD_RE = re.compile(r"\b(interview|round|call)s?\b", re.IGNORECASE)
+
 
 @dataclass
 class InterviewClassification:
@@ -189,9 +197,11 @@ def classify_interview_requirement(
     ("use AI classification when necessary") when the deterministic pass comes
     back UNKNOWN, and even then its output is validated before being trusted:
     an invalid/malformed AI response, or one that claims IN_PERSON without a
-    supporting `evidence` string actually present in the source text, is
-    discarded in favor of the safe deterministic UNKNOWN result. UNKNOWN is
-    never auto-escalated to IN_PERSON (section 13).
+    supporting `evidence` string actually present in the source text AND
+    itself about the interview (not just the job's location - see
+    _INTERVIEW_CONTEXT_WORD_RE), is discarded in favor of the safe
+    deterministic UNKNOWN result. UNKNOWN is never auto-escalated to
+    IN_PERSON (section 13).
     """
     deterministic = _deterministic_classify(text)
     if deterministic.interview_type != "UNKNOWN" or ai_provider is None:
@@ -210,8 +220,16 @@ def classify_interview_requirement(
         ai_evidence = ai_result.get("evidence")
         if ai_type == "IN_PERSON":
             # never let AI trigger a skip without a real, quotable excerpt
-            # from the actual source text backing it up
-            if not ai_evidence or ai_evidence.lower() not in text.lower():
+            # from the actual source text backing it up, AND that excerpt
+            # must itself be about the interview - a job-location/work-
+            # arrangement statement alone (e.g. "Location: Charlotte, NC -
+            # Onsite") is never sufficient, even though it genuinely appears
+            # verbatim in the text.
+            if (
+                not ai_evidence
+                or ai_evidence.lower() not in text.lower()
+                or not _INTERVIEW_CONTEXT_WORD_RE.search(ai_evidence)
+            ):
                 return deterministic
 
         confidence = float(ai_result.get("confidence", 0.6))

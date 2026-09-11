@@ -444,11 +444,15 @@ def process_message(
 
         application.selected_resume_id = best_resume.id
 
-        # AI-assisted match scoring + truthful, format-preserving resume
-        # customization (acting as a senior recruiter + senior data/software
-        # engineer). Only ever surfaces skills the candidate's own resume
-        # metadata already claims - never invents anything. Only .docx
-        # resumes get an actual customized file; PDFs/legacy .doc keep the
+        # Deterministic match score/explanation (RULE H) - never re-scored by
+        # an LLM. Resume CONTENT customization then tries the enhanced,
+        # LLM-assisted path first (header role rewrite, summary lines,
+        # verified skills placed into their existing category, experience
+        # bullets - see resume_customizer.generate_llm_customized_resume),
+        # falling back to the plain deterministic "Additional Relevant
+        # Skills" customization whenever the LLM path is unavailable,
+        # disabled, or fails/doesn't pass validation. Only .docx resumes get
+        # an actual customized file either way; PDFs/legacy .doc keep the
         # original attached unchanged, since there's no safe way to rewrite
         # their layout in place.
         customization = resume_customizer.evaluate_and_customize(
@@ -460,12 +464,24 @@ def process_message(
 
         attachment_path = best_resume.file_path
         attachment_filename = best_resume.filename
-        customized = resume_customizer.customize_resume_file(
-            best_resume, customization.additional_points, dest_dir=settings.RESUME_DIR
+        customization_source: str | None = None
+        customized = resume_customizer.generate_llm_customized_resume(
+            best_resume, jd_title=job_details.job_title, jd_text=parsed.full_text,
+            jd_requirements=job_details.requirements, ai_provider=ai_provider, settings=settings,
+            dest_dir=settings.RESUME_DIR,
         )
+        if customized is not None:
+            customization_source = "llm"
+        else:
+            customized = resume_customizer.customize_resume_file(
+                best_resume, customization.additional_points, dest_dir=settings.RESUME_DIR
+            )
+            if customized is not None:
+                customization_source = "deterministic"
         if customized is not None:
             customized_path, customized_filename = customized
             application.customized_resume_path = customized_path
+            application.customization_source = customization_source
             attachment_path = customized_path
             attachment_filename = customized_filename
 
@@ -476,7 +492,7 @@ def process_message(
         db.commit()
         add_event(db, application.id, EventType.RESUME_SELECTED,
                   {"resume_id": best_resume.id, "filename": attachment_filename, "match_score": customization.match_score,
-                   "customized": customized is not None})
+                   "customized": customized is not None, "customization_source": customization_source})
 
         # Email generation (RULE D/E/F)
         profile = db.query(CandidateProfile).first()
@@ -508,6 +524,7 @@ def process_message(
             hope_line=effective_settings.email_hope_line,
             capability_sentence=effective_settings.email_capability_sentence,
             closing_line=effective_settings.email_closing_line,
+            jd_text=parsed.full_text,
         )
         application.generated_subject = generated.subject
         application.generated_body = generated.body

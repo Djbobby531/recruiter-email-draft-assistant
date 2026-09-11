@@ -59,6 +59,7 @@ _APPLICATIONS_NEW_COLUMNS = {
     "skip_reason": "TEXT",
     "updated_at": "DATETIME",
     "customized_resume_path": "VARCHAR(1024)",
+    "customization_source": "VARCHAR(32)",
 }
 
 _OPPORTUNITIES_NEW_COLUMNS = {

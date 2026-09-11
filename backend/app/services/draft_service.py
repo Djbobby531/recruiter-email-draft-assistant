@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass
 
 from app.ai.base import AIProvider
+from app.services.ai_text_guardrails import canonical_skill, validate_generated_statement
 
 FORBIDDEN_PHRASES = [
     "thank you for sharing the opportunity",
@@ -133,6 +134,7 @@ def generate_body(
     hope_line: str = DEFAULT_HOPE_LINE,
     capability_sentence: str = DEFAULT_CAPABILITY_SENTENCE,
     closing_line: str = DEFAULT_CLOSING_LINE,
+    skills_sentence: str | None = None,
 ) -> str:
     """`recruiter_first_name` is intentionally accepted but no longer used in
     the greeting - the recruiter's name is often wrong/unreliable (extracted
@@ -145,24 +147,39 @@ def generate_body(
     `hope_line`/`capability_sentence`/`closing_line` are the only
     user-customizable pieces (see services/runtime_settings.py) - callers
     are expected to pass already-validated values (or the defaults);
-    `hope_line` may be an empty string to omit that line entirely."""
+    `hope_line` may be an empty string to omit that line entirely.
+
+    `skills_sentence` is an already-validated, JD-tailored sentence (see
+    `generate_email`'s AI-assisted skills pitch) that replaces the plain
+    "with strong expertise in X, Y, Z" list when given - callers pass None
+    to keep the fully deterministic, always-identical-shape template."""
     title = job_title.strip() if job_title else "this opportunity"
     location_suffix = f" in {job_location.strip()}" if job_location else ""
     experience_phrase = _experience_phrase(candidate_experience)
     work_auth_phrase = _work_auth_phrase(candidate_work_auth)
 
-    # First N matched skills carry the "strong expertise in" sentence; any
-    # further matches (still real, still JD-matched - never invented) round
-    # out a second "along with" clause rather than one long list.
-    primary_skills_text = _top_skills_for_body(top_skills[:8])
-    remaining_skills = top_skills[8:13]
-    along_with_clause = f", along with {_top_skills_for_body(remaining_skills)}" if remaining_skills else ""
+    if skills_sentence:
+        expertise_sentence = (
+            f"I have {experience_phrase} of experience. {skills_sentence.rstrip('.')}. {capability_sentence}."
+        )
+    else:
+        # First N matched skills carry the "strong expertise in" sentence;
+        # any further matches (still real, still JD-matched - never
+        # invented) round out a second "along with" clause rather than one
+        # long list.
+        primary_skills_text = _top_skills_for_body(top_skills[:8])
+        remaining_skills = top_skills[8:13]
+        along_with_clause = f", along with {_top_skills_for_body(remaining_skills)}" if remaining_skills else ""
+        expertise_sentence = (
+            f"I have {experience_phrase} of experience with strong expertise in {primary_skills_text}. "
+            f"{capability_sentence}{along_with_clause}."
+        )
 
     hope_paragraph = f"\n\n{hope_line}" if hope_line else ""
 
     body = f"""Hi,{hope_paragraph}
 
-I'm interested in the {title} opportunity{location_suffix}. I have {experience_phrase} of experience with strong expertise in {primary_skills_text}. {capability_sentence}{along_with_clause}.
+I'm interested in the {title} opportunity{location_suffix}. {expertise_sentence}
 
 {DEFAULT_CAREER_FOCUS_SENTENCE}
 
@@ -228,8 +245,29 @@ def generate_email(
     hope_line: str = DEFAULT_HOPE_LINE,
     capability_sentence: str = DEFAULT_CAPABILITY_SENTENCE,
     closing_line: str = DEFAULT_CLOSING_LINE,
+    jd_text: str | None = None,
 ) -> GeneratedEmail:
     subject = generate_subject(job_title, job_location)
+
+    # AI-tailored skills pitch: replaces the plain "expertise in X, Y, Z"
+    # list (identical shape for every email) with 1-2 sentences that
+    # actually reflect what THIS job description emphasizes - restricted to
+    # only the already-matched top_skills, so it can never claim a
+    # technology the candidate hasn't already been credited with. Any doubt
+    # (no provider/jd_text, an exception, a hedge phrase, an unapproved
+    # technology mention, too long) silently keeps the deterministic list.
+    skills_sentence = None
+    if ai_provider is not None and jd_text:
+        try:
+            pitch = ai_provider.generate_email_skills_pitch(
+                job_title=job_title or "", jd_text=jd_text,
+                top_skills=top_skills, candidate_experience=candidate_experience,
+            )
+            approved_canonical = {canonical_skill(s) for s in top_skills}
+            skills_sentence = validate_generated_statement(pitch, approved_canonical, max_words=70)
+        except Exception:
+            pass  # keep the deterministic skills list on any AI failure
+
     body = generate_body(
         job_title=job_title,
         job_location=job_location,
@@ -244,6 +282,7 @@ def generate_email(
         hope_line=hope_line,
         capability_sentence=capability_sentence,
         closing_line=closing_line,
+        skills_sentence=skills_sentence,
     )
 
     if ai_provider is not None:

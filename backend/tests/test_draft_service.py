@@ -23,8 +23,49 @@ class _StubAIProvider(AIProvider):
     def classify_interview_requirement(self, text):
         raise NotImplementedError
 
-    def evaluate_and_customize_resume(self, resume_text, jd_title, jd_text, candidate_existing_skills):
+    def generate_resume_customization_plan(
+        self, resume_text, resume_structure, jd_title, jd_text, jd_requirements,
+        approved_skills, approved_experience_identifiers,
+    ):
         raise NotImplementedError
+
+    def generate_email_skills_pitch(self, job_title, jd_text, top_skills, candidate_experience):
+        raise NotImplementedError
+
+
+class _SkillsPitchAIProvider(AIProvider):
+    """Only generate_email_skills_pitch is exercised by these tests -
+    polish_email_body returns the draft unchanged so the pitch's effect on
+    the body is directly observable."""
+
+    def __init__(self, pitch=None, raises=None):
+        self.pitch = pitch
+        self.raises = raises
+        self.calls = []
+
+    def classify_job_email(self, subject, body):
+        raise NotImplementedError
+
+    def extract_job_details(self, text):
+        raise NotImplementedError
+
+    def polish_email_body(self, draft_body, constraints):
+        return draft_body
+
+    def classify_interview_requirement(self, text):
+        raise NotImplementedError
+
+    def generate_resume_customization_plan(
+        self, resume_text, resume_structure, jd_title, jd_text, jd_requirements,
+        approved_skills, approved_experience_identifiers,
+    ):
+        raise NotImplementedError
+
+    def generate_email_skills_pitch(self, job_title, jd_text, top_skills, candidate_experience):
+        self.calls.append({"job_title": job_title, "jd_text": jd_text, "top_skills": top_skills})
+        if self.raises:
+            raise self.raises
+        return self.pitch
 
 
 def _generate_email_kwargs(**overrides):
@@ -156,3 +197,67 @@ def test_generate_email_discards_ai_output_that_names_the_recruiter():
 
     assert generated.body.startswith("Hi,")
     assert "Naveen" not in generated.body
+
+
+# --- AI-tailored skills pitch (replaces the generic "expertise in X, Y, Z" list) ---
+
+
+def test_skills_pitch_used_when_valid_and_jd_text_given():
+    ai = _SkillsPitchAIProvider(
+        pitch="Given this role's focus on real-time streaming, my hands-on Databricks and Python experience is directly relevant."
+    )
+    generated = draft_service.generate_email(
+        ai_provider=ai, jd_text="We need a streaming data engineer with Databricks and Python.",
+        **_generate_email_kwargs(),
+    )
+    assert "Given this role's focus on real-time streaming" in generated.body
+    assert "with strong expertise in" not in generated.body  # generic template clause replaced
+    assert len(ai.calls) == 1
+    assert ai.calls[0]["top_skills"] == ["databricks", "python"]
+
+
+def test_skills_pitch_not_requested_when_jd_text_missing():
+    """No jd_text (e.g. an older/degenerate call site) means no tailored
+    pitch is even attempted - the deterministic list is used, and the
+    provider is never called for this."""
+    ai = _SkillsPitchAIProvider(pitch="should never be used")
+    generated = draft_service.generate_email(ai_provider=ai, **_generate_email_kwargs())
+    assert ai.calls == []
+    assert "with strong expertise in" in generated.body
+
+
+def test_skills_pitch_rejected_for_unapproved_technology_falls_back_to_generic():
+    """The model mentions Kubernetes, which isn't in top_skills - the whole
+    pitch must be discarded, not silently trimmed, since trusting it would
+    let the AI claim skills the candidate wasn't actually matched on."""
+    ai = _SkillsPitchAIProvider(pitch="My strong Kubernetes and container orchestration background fits this role well.")
+    generated = draft_service.generate_email(
+        ai_provider=ai, jd_text="Looking for a Databricks engineer.", **_generate_email_kwargs(),
+    )
+    assert "Kubernetes" not in generated.body
+    assert "with strong expertise in" in generated.body  # fell back to the deterministic list
+
+
+def test_skills_pitch_rejected_for_hedge_language_falls_back_to_generic():
+    ai = _SkillsPitchAIProvider(pitch="This role likely could apply well to my Databricks background.")
+    generated = draft_service.generate_email(
+        ai_provider=ai, jd_text="Looking for a Databricks engineer.", **_generate_email_kwargs(),
+    )
+    assert "likely could apply" not in generated.body
+    assert "with strong expertise in" in generated.body
+
+
+def test_skills_pitch_provider_exception_falls_back_to_generic():
+    ai = _SkillsPitchAIProvider(raises=ConnectionError("ollama unreachable"))
+    generated = draft_service.generate_email(
+        ai_provider=ai, jd_text="Looking for a Databricks engineer.", **_generate_email_kwargs(),
+    )
+    assert "with strong expertise in" in generated.body
+
+
+def test_skills_pitch_empty_response_falls_back_to_generic():
+    ai = _SkillsPitchAIProvider(pitch="")
+    generated = draft_service.generate_email(
+        ai_provider=ai, jd_text="Looking for a Databricks engineer.", **_generate_email_kwargs(),
+    )
+    assert "with strong expertise in" in generated.body

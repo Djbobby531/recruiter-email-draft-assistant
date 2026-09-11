@@ -5,18 +5,33 @@ from typing import Any
 
 import httpx
 
-from app.ai.base import AIProvider
+from app.ai.base import EMAIL_SKILLS_PITCH_SYSTEM_PROMPT, RESUME_CUSTOMIZATION_PLAN_SYSTEM_PROMPT, AIProvider
 
 
 class OllamaProvider(AIProvider):
     """Talks to a local Ollama server (http://localhost:11434 by default). Zero cost."""
 
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3.1", timeout: float = 60.0):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "llama3.1",
+        timeout: float = 60.0,
+        resume_timeout: float | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        # The resume-customization prompt (full resume text + JD text + the
+        # existing structure summary, asking for a much longer structured
+        # JSON response) is far heavier than the other short classification
+        # calls - the general `timeout` above is frequently too short for it
+        # on a local CPU-bound model and was silently causing every real
+        # customization attempt to time out and fall back to the
+        # deterministic path. Defaults to `timeout` when not given so every
+        # other call site's behavior is unchanged.
+        self.resume_timeout = resume_timeout if resume_timeout is not None else timeout
 
-    def _generate_json(self, system: str, user: str) -> dict[str, Any]:
+    def _generate_json(self, system: str, user: str, timeout: float | None = None) -> dict[str, Any]:
         resp = httpx.post(
             f"{self.base_url}/api/generate",
             json={
@@ -26,7 +41,7 @@ class OllamaProvider(AIProvider):
                 "format": "json",
                 "stream": False,
             },
-            timeout=self.timeout,
+            timeout=timeout if timeout is not None else self.timeout,
         )
         resp.raise_for_status()
         text = resp.json().get("response", "{}")
@@ -54,35 +69,63 @@ class OllamaProvider(AIProvider):
             "Distinguish job location/work-arrangement (onsite/hybrid/remote job) from the "
             "INTERVIEW arrangement itself - only classify IN_PERSON if the interview process "
             "clearly requires physical attendance. A hybrid or onsite JOB with a remote "
-            "interview is REMOTE, not IN_PERSON. "
+            "interview is REMOTE, not IN_PERSON. IMPORTANT: a statement about where the JOB is "
+            "located or performed (e.g. \"Location: Charlotte, NC - Onsite\", \"Onsite role\", "
+            "\"Hybrid position\") is NEVER by itself evidence of an interview requirement - it "
+            "describes the job, not the interview. Only classify IN_PERSON if the text explicitly "
+            "talks about the INTERVIEW/ROUND/CALL itself requiring in-person attendance; if the "
+            "only thing mentioned is the job's location/work-arrangement with no separate mention "
+            "of the interview process, use UNKNOWN. "
             'Respond with strict JSON only: {"interview_type": "IN_PERSON"|"REMOTE"|"HYBRID"|"UNKNOWN", '
             '"requires_in_person_interview": bool, "confidence": 0-1 float, "reason": str, '
-            '"evidence": str|null}. evidence must be copied verbatim from the text, never invented.'
+            '"evidence": str|null}. evidence must be copied verbatim from the text, never invented, '
+            "and must itself mention the interview/round/call - never just the job's location."
         )
         return self._generate_json(system, text[:8000])
 
-    def evaluate_and_customize_resume(
-        self, resume_text: str, jd_title: str, jd_text: str, candidate_existing_skills: list[str]
+    def generate_resume_customization_plan(
+        self,
+        resume_text: str,
+        resume_structure: dict[str, Any],
+        jd_title: str,
+        jd_text: str,
+        jd_requirements: list[str],
+        approved_skills: list[str],
+        approved_experience_identifiers: list[str],
     ) -> dict[str, Any]:
-        system = (
-            "You are acting as BOTH a senior technical recruiter AND a senior data/software "
-            "engineer, reviewing how well a candidate's resume matches a job description. "
-            "Score the match honestly (0-100). Then write 2-3 short, professional resume bullet "
-            "points that highlight ONLY the skills listed in candidate_existing_skills below - "
-            "these are skills the candidate genuinely already has, just not prominently written "
-            "into their resume text yet. You must NEVER invent, assume, or add any skill, "
-            "technology, tool, certification, or experience that is not explicitly listed in "
-            "candidate_existing_skills or already present in the resume text - doing so would be "
-            "resume fraud. If candidate_existing_skills is empty, return an empty list. "
-            'Respond with strict JSON only: {"match_score": 0-100 float, "match_explanation": '
-            'str, "additional_points": [str]}.'
-        )
+        system = RESUME_CUSTOMIZATION_PLAN_SYSTEM_PROMPT
         user = (
-            f"Job Title: {jd_title}\n\nJob Description:\n{jd_text[:6000]}\n\n"
-            f"Candidate's existing (but underemphasized) skills: {', '.join(candidate_existing_skills) or 'none'}\n\n"
-            f"Resume text:\n{resume_text[:6000]}"
+            f"Job title: {jd_title}\n\n"
+            f"Job description (may include the full recruiter email):\n{jd_text[:6000]}\n\n"
+            f"Job requirements list: {', '.join(jd_requirements) or 'none extracted'}\n\n"
+            f"APPROVED candidate skills (the ONLY skills you may ever surface or reference - "
+            f"nothing outside this list): {', '.join(approved_skills) or 'none'}\n\n"
+            f"Existing resume structure (what this exact resume already has - only reference "
+            f"things listed here):\n{json.dumps(resume_structure, indent=2)}\n\n"
+            f"APPROVED experience identifiers (the ONLY values valid for "
+            f"experience_identifier): {', '.join(approved_experience_identifiers) or 'none'}\n\n"
+            f"Full resume text (for context only - do not invent anything beyond it):\n"
+            f"{resume_text[:6000]}"
         )
-        return self._generate_json(system, user)
+        return self._generate_json(system, user, timeout=self.resume_timeout)
+
+    def generate_email_skills_pitch(
+        self, job_title: str, jd_text: str, top_skills: list[str], candidate_experience: str,
+    ) -> str:
+        system = EMAIL_SKILLS_PITCH_SYSTEM_PROMPT
+        user = (
+            f"Job title: {job_title}\n\n"
+            f"Job description (for context on what to emphasize - do not quote it back):\n{jd_text[:3000]}\n\n"
+            f"Candidate's verified skills (the ONLY skills you may mention): {', '.join(top_skills) or 'none'}\n\n"
+            f"Candidate's years of experience: {candidate_experience}"
+        )
+        resp = httpx.post(
+            f"{self.base_url}/api/generate",
+            json={"model": self.model, "system": system, "prompt": user, "stream": False},
+            timeout=self.resume_timeout,
+        )
+        resp.raise_for_status()
+        return resp.json().get("response", "").strip()
 
     def polish_email_body(self, draft_body: str, constraints: list[str]) -> str:
         system = (
