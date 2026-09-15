@@ -63,6 +63,28 @@ from app.utils.text_cleaning import clean_role_text
 
 logger = logging.getLogger("app.resume_customizer")
 
+# The attachment filename shown to every recruiter, for every customized
+# resume, regardless of role or which customization path produced it (by
+# explicit configuration choice - previously this varied per JD role/
+# original filename, which the candidate found needlessly inconsistent).
+# The FILE ITSELF on disk is always named exactly this too - no prefix or
+# suffix - uniqueness across applications instead comes from each one living
+# in its own randomly-named subdirectory (see the two call sites below),
+# which is never visible to anyone - only the attachment's filename is.
+CUSTOMIZED_RESUME_DISPLAY_FILENAME = "Diwakar_Resume.docx"
+
+
+def _discard_customization_output(new_path: Path) -> None:
+    """Deletes a rejected/invalid customization's output file AND its
+    now-empty per-customization subdirectory (see
+    CUSTOMIZED_RESUME_DISPLAY_FILENAME above) - otherwise every rejected
+    attempt would leave an orphaned empty directory behind forever."""
+    try:
+        new_path.unlink(missing_ok=True)
+        new_path.parent.rmdir()
+    except OSError:
+        pass  # directory not empty (unexpected) or already gone - harmless either way
+
 
 @dataclass
 class CustomizationResult:
@@ -387,9 +409,16 @@ def customize_resume_file(resume: Resume, additional_points: list[str], dest_dir
                 if reference_style is not None:
                     bullet.style = reference_style
 
-        Path(dest_dir).mkdir(parents=True, exist_ok=True)
-        display_filename = f"Customized_{resume.filename}"
-        new_path = Path(dest_dir) / f"{uuid.uuid4().hex[:8]}_{display_filename}"
+        display_filename = CUSTOMIZED_RESUME_DISPLAY_FILENAME
+        # The FILE ITSELF is always named exactly "Diwakar_Resume.docx" - no
+        # prefix/suffix - so uniqueness (every past application's dashboard
+        # "view customized resume" must keep showing ITS OWN content, not
+        # get silently overwritten by a later application's file of the same
+        # name) comes from a per-customization subdirectory instead, which
+        # is never visible to anyone - only the attachment's filename is.
+        customization_dir = Path(dest_dir) / uuid.uuid4().hex[:8]
+        customization_dir.mkdir(parents=True, exist_ok=True)
+        new_path = customization_dir / display_filename
         document.save(str(new_path))
     except Exception:
         logger.warning("resume customization failed while editing the document; keeping the original resume", exc_info=True)
@@ -399,10 +428,7 @@ def customize_resume_file(resume: Resume, additional_points: list[str], dest_dir
     # formatting problem always reverts to attaching the plain resume.
     original_document = docx.Document(resume.file_path)
     if not _customization_is_format_safe(original_document, str(new_path)):
-        try:
-            Path(new_path).unlink(missing_ok=True)
-        except OSError:
-            pass
+        _discard_customization_output(new_path)
         return None
 
     return str(new_path), display_filename
@@ -465,27 +491,10 @@ SKILLS_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _SKILL_LABEL_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z0-9 /&\-]{1,40}):\s*(.+)$")
-_INVALID_FILENAME_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
 
 
 def _split_skill_items(items_text: str) -> list[str]:
     return [p.strip() for p in re.split(r"[;,]", items_text) if p.strip()]
-
-
-_TYPOGRAPHIC_DASH_RE = re.compile(r"[‐-―]")  # hyphen/en-dash/em-dash variants
-
-
-def _sanitize_filename_component(text: str) -> str:
-    # `clean_role_text` first strips emoji/decorative symbols (#, @, *, etc.)
-    # a JD-extracted or AI-generated role can carry - then typographic dashes
-    # are normalized to a plain ASCII hyphen, since a filename benefits from
-    # staying plain-ASCII-safe even though the resume's own header text (a
-    # human-read display string, not a filename) keeps the nicer dash.
-    cleaned = clean_role_text(text) or text
-    cleaned = _TYPOGRAPHIC_DASH_RE.sub("-", cleaned)
-    cleaned = _INVALID_FILENAME_CHARS_RE.sub("", cleaned)
-    cleaned = re.sub(r"\s+", "_", cleaned.strip())
-    return cleaned or "Customized_Resume"
 
 
 @dataclass
@@ -1108,10 +1117,13 @@ def generate_llm_customized_resume(
 
     try:
         _apply_customization_plan(document, plan, header_paragraph, summary_bounds, summary_reference)
-        Path(dest_dir).mkdir(parents=True, exist_ok=True)
-        role_for_filename = plan.header_role or resume_structure["current_header_role"] or jd_title or "Customized_Resume"
-        display_filename = f"diwakar_{_sanitize_filename_component(role_for_filename)}.docx"
-        new_path = Path(dest_dir) / f"{uuid.uuid4().hex[:8]}_{display_filename}"
+        display_filename = CUSTOMIZED_RESUME_DISPLAY_FILENAME
+        # See customize_resume_file() above for why this lives in a
+        # per-customization subdirectory rather than being prefixed itself -
+        # the FILE is always exactly "Diwakar_Resume.docx".
+        customization_dir = Path(dest_dir) / uuid.uuid4().hex[:8]
+        customization_dir.mkdir(parents=True, exist_ok=True)
+        new_path = customization_dir / display_filename
         document.save(str(new_path))
     except Exception:
         logger.warning("LLM resume customization: failed while editing/saving; falling back to deterministic", exc_info=True)
@@ -1122,16 +1134,13 @@ def generate_llm_customized_resume(
     new_stat = Path(resume.file_path).stat()
     if new_stat.st_size != original_stat.st_size or new_stat.st_mtime != original_stat.st_mtime:
         logger.error("LLM resume customization: original resume file changed unexpectedly - discarding output")
-        Path(new_path).unlink(missing_ok=True)
+        _discard_customization_output(new_path)
         return None
 
     modified_paragraphs = [(position, original_text, p.text) for p, position, original_text in tracked if p.text != original_text]
     original_document = docx.Document(resume.file_path)
     if not _llm_customization_is_valid(original_document, str(new_path), modified_paragraphs):
-        try:
-            Path(new_path).unlink(missing_ok=True)
-        except OSError:
-            pass
+        _discard_customization_output(new_path)
         return None
 
     logger.info(

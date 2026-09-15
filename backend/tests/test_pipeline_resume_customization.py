@@ -227,11 +227,9 @@ def test_llm_plan_customizes_header_skills_and_experience_end_to_end(
     assert any(t.startswith("Cloud:") and "Airflow" in t for t in texts)  # skill surfaced into Cloud
     assert any("Automated pipeline scheduling with Airflow" in t for t in texts)  # experience bullet added
 
-    # filename follows diwakar_{Role}.docx - NEVER the old deterministic
-    # "Customized_{filename}" convention when the LLM path actually succeeded
+    # display filename is always Diwakar_Resume.docx now, regardless of role
     filename = application.customized_resume_path.split("/")[-1]
-    assert filename.endswith("diwakar_Senior_AWS_Data_Engineer.docx")
-    assert "Customized_" not in filename
+    assert filename.endswith("Diwakar_Resume.docx")
     assert fake_gmail_client.created_drafts[0]["attachment_path"] == application.customized_resume_path
 
     # original library file is completely untouched
@@ -373,8 +371,7 @@ def test_llm_plan_skill_in_table_cell_survives_the_real_pipeline(
     assert ai.called is True
     assert application.customization_source == "llm"
     filename = application.customized_resume_path.split("/")[-1]
-    assert filename.endswith("diwakar_Senior_GoLang_Data_Engineer.docx")
-    assert "Customized_" not in filename
+    assert filename.endswith("Diwakar_Resume.docx")
 
     new_document = docx.Document(application.customized_resume_path)
     assert new_document.tables[0].rows[0].cells[0].text == "Senior GoLang Data Engineer"

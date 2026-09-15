@@ -17,6 +17,8 @@ already there, even when an AI provider suggests one.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import docx
 
 from app.config import Settings
@@ -246,7 +248,10 @@ def test_customize_resume_file_creates_new_docx_without_touching_original(tmp_pa
     assert result is not None
     new_path, display_filename = result
     assert new_path != resume.file_path
-    assert display_filename == "Customized_resume.docx"
+    assert display_filename == "Diwakar_Resume.docx"
+    # the FILE on disk is exactly this name too - no prefix, no suffix -
+    # uniqueness comes from the containing (never-user-visible) directory
+    assert Path(new_path).name == "Diwakar_Resume.docx"
 
     # original untouched
     assert docx.Document(resume.file_path).paragraphs[0].text == original_text_before
@@ -575,7 +580,8 @@ def test_llm_customization_header_role_replaced_preserving_run_formatting(tmp_pa
     )
     assert result is not None
     new_path, filename = result
-    assert filename == "diwakar_Senior_AWS_Data_Engineer.docx"
+    assert filename == "Diwakar_Resume.docx"
+    assert Path(new_path).name == "Diwakar_Resume.docx"  # the on-disk file itself, no prefix/suffix
 
     new_document = docx.Document(new_path)
     role_paragraph = next(p for p in new_document.paragraphs if p.text == "Senior AWS Data Engineer")
@@ -593,7 +599,7 @@ def test_llm_customization_header_role_strips_hash_and_symbols(tmp_path):
     messy recruiter subject line - even though jd_extractor already cleans
     job_title at the source, the AI's own header_role suggestion must be
     cleaned independently too (defense in depth) before it ever lands in the
-    resume header or the output filename."""
+    resume header."""
     resume = _rich_resume_titles(_make_rich_docx_resume(tmp_path))
     ai = _PlanAI(plan={
         "header_role": "🚨 Senior #AWS Data Engineer", "summary_points": [], "skills_to_add": [], "experience_updates": [],
@@ -607,15 +613,7 @@ def test_llm_customization_header_role_strips_hash_and_symbols(tmp_path):
     new_texts = [p.text for p in docx.Document(new_path).paragraphs]
     assert "Senior AWS Data Engineer" in new_texts
     assert not any("#" in t or "🚨" in t for t in new_texts if t != "Senior Data Engineer")
-    assert "#" not in filename
-    assert filename == "diwakar_Senior_AWS_Data_Engineer.docx"
-
-
-def test_sanitize_filename_component_normalizes_typographic_dashes_to_hyphen():
-    from app.services.resume_customizer import _sanitize_filename_component
-
-    assert _sanitize_filename_component("Senior Data Engineer – dbt") == "Senior_Data_Engineer_-_dbt"
-    assert _sanitize_filename_component("Data Engineer — AWS") == "Data_Engineer_-_AWS"
+    assert filename == "Diwakar_Resume.docx"
 
 
 def test_llm_customization_header_role_found_via_heuristic_when_no_exact_title_match(tmp_path):
@@ -910,25 +908,11 @@ def test_llm_customization_two_runs_against_different_jds_never_leak_into_each_o
     azure_texts = [p.text for p in docx.Document(result_azure[0]).paragraphs]
     assert "Senior AWS Data Engineer" in aws_texts and "Senior Azure Data Engineer" not in aws_texts
     assert "Senior Azure Data Engineer" in azure_texts and "Senior AWS Data Engineer" not in azure_texts
-    assert result_aws[1] == "diwakar_Senior_AWS_Data_Engineer.docx"
-    assert result_azure[1] == "diwakar_Senior_Azure_Data_Engineer.docx"
-
-
-def test_llm_customization_filename_sanitizes_invalid_characters(tmp_path):
-    resume = _rich_resume_titles(_make_rich_docx_resume(tmp_path))
-    ai = _PlanAI(plan={
-        "header_role": 'Data Engineer: AWS/Azure "Lead"', "summary_points": [], "skills_to_add": [], "experience_updates": [],
-    })
-    result = generate_llm_customized_resume(
-        resume, jd_title="Data Engineer", jd_text="AWS", jd_requirements=["aws"],
-        ai_provider=ai, settings=_llm_settings(), dest_dir=str(tmp_path / "out"),
-    )
-    assert result is not None
-    _, filename = result
-    assert filename.startswith("diwakar_")
-    assert filename.endswith(".docx")
-    for bad_char in '/\\:*?"<>|':
-        assert bad_char not in filename
+    # the display filename is always the same fixed name now, but the two
+    # runs must still produce two genuinely DIFFERENT files on disk
+    assert result_aws[1] == "Diwakar_Resume.docx"
+    assert result_azure[1] == "Diwakar_Resume.docx"
+    assert result_aws[0] != result_azure[0]
 
 
 def test_llm_customization_no_change_when_header_already_matches_jd(tmp_path):
